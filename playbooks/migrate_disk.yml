@@ -1,0 +1,30 @@
+---
+- name: Simple disk migration
+  hosts: ubuntu
+  become: true
+
+  vars:
+    old_mount_point: /data
+    new_mount_point: /mnt/new_disk
+    new_disk: /dev/sdc
+    filesystem_type: ext4
+
+    # сервисы, чтобы не потерять SSH/Ansible и не сломать systemd/сеть.
+    keep_services:
+      - ssh.service
+      - sshd.service
+      - systemd-journald.service
+      - systemd-logind.service
+      - systemd-udevd.service
+      - dbus.service
+      - NetworkManager.service
+      - systemd-networkd.service
+      - networking.service
+      - systemd-resolved.service
+
+  roles:
+    - disk_prepare
+    - stop_services
+    - data_copy
+    - disk_switch
+    - start_services

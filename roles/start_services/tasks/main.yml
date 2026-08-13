@@ -1,0 +1,6 @@
+---
+- name: Start services that were stopped
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+  loop: "{{ services_to_restart }}"

@@ -1,0 +1,23 @@
+---
+- name: Get UUID of new disk
+  ansible.builtin.command: "blkid -s UUID -o value {{ new_disk }}"
+  register: new_disk_uuid
+  changed_when: false
+
+- name: Unmount temporary new disk
+  ansible.posix.mount:
+    path: "{{ new_mount_point }}"
+    state: unmounted
+
+- name: Unmount old disk
+  ansible.posix.mount:
+    path: "{{ old_mount_point }}"
+    state: unmounted
+
+- name: Mount new disk in place of old disk
+  ansible.posix.mount:
+    path: "{{ old_mount_point }}"
+    src: "UUID={{ new_disk_uuid.stdout | trim }}"
+    fstype: "{{ filesystem_type }}"
+    opts: defaults
+    state: mounted

@@ -1,0 +1,28 @@
+---
+- name: Check new disk
+  ansible.builtin.stat:
+    path: "{{ new_disk }}"
+  register: disk
+
+- name: New disk must exist
+  ansible.builtin.assert:
+    that: disk.stat.exists
+    fail_msg: "Новый диск {{ new_disk }} не найден"
+
+- name: Create filesystem on new disk
+  community.general.filesystem:
+    dev: "{{ new_disk }}"
+    fstype: "{{ filesystem_type }}"
+
+- name: Create temporary mount point
+  ansible.builtin.file:
+    path: "{{ new_mount_point }}"
+    state: directory
+    mode: "0755"
+
+- name: Mount new disk temporarily
+  ansible.posix.mount:
+    path: "{{ new_mount_point }}"
+    src: "{{ new_disk }}"
+    fstype: "{{ filesystem_type }}"
+    state: ephemeral

@@ -1,0 +1,26 @@
+---
+- name: Get running services
+  ansible.builtin.service_facts:
+
+- name: Save services that will be stopped
+  ansible.builtin.set_fact:
+    services_to_restart: >-
+      {{
+        ansible_facts.services
+        | dict2items
+        | selectattr('value.state', 'equalto', 'running')
+        | map(attribute='key')
+        | reject('in', keep_services)
+        | reject('match', '^systemd-.*\.service$')
+        | list
+      }}
+
+- name: Show services that will be stopped
+  ansible.builtin.debug:
+    var: services_to_restart
+
+- name: Stop non-system services
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+  loop: "{{ services_to_restart }}"
