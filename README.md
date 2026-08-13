@@ -19,7 +19,4 @@ ansible-galaxy collection install -r requirements.yml
 ansible-playbook playbooks/migrate_disk.yml -k -K
 ```
 
-Перед запуском проверьте `inventory.ini`, `new_disk`, точки монтирования и список сервисов.
-
-# ОСТАНАВЛИВАЕМ ВСЕ ПРОЦЕССЫ (кроме тех которые нужны для работы ssh и ansible) 
-# МОЖНО НЕ ЗАПУСКАТЬ ЗАДАНИЕ СО ЗВЕЗДОЧКОЙ
+Перед запуском проверьте `inventory.ini`, `new_disk`, точки монтирования и список сервисов, которые необходимо не останавливать.
