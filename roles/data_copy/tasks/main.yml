@@ -1,9 +1,10 @@
 ---
-- name: Copy all data to new disk
+- name: Copy data to new disk
   ansible.builtin.command:
     argv:
-      - rsync
-      - -aHAXx
-      - --delete
-      - "{{ old_mount_point }}/"
+      - cp
+      - -a
+      - "{{ old_mount_point }}/."
       - "{{ new_mount_point }}/"
+  register: copy_result
+  changed_when: copy_result.rc == 0

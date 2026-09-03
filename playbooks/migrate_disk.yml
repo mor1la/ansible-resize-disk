@@ -1,15 +1,16 @@
 ---
-- name: Simple disk migration
+- name: Disk migration
   hosts: ubuntu
   become: true
 
   vars:
     old_mount_point: /data
     new_mount_point: /mnt/new_disk
-    new_disk: /dev/sdc
-    filesystem_type: ext4
 
-    # сервисы, чтобы не потерять SSH/Ansible и не сломать systemd/сеть.
+    filesystem_type: ext4
+    mount_options: defaults
+
+    # Services that must stay up so Ansible/SSH/network access is not lost.
     keep_services:
       - ssh.service
       - sshd.service

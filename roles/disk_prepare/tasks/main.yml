@@ -1,18 +1,115 @@
 ---
-- name: Check new disk
-  ansible.builtin.stat:
-    path: "{{ new_disk }}"
-  register: disk
-
-- name: New disk must exist
+- name: Require target disk size
   ansible.builtin.assert:
-    that: disk.stat.exists
-    fail_msg: "Новый диск {{ new_disk }} не найден"
+    that:
+      - new_disk_size_gib is defined
+      - new_disk_size_gib | int > 0
+    fail_msg: >-
+      Pass the size (GiB) of the newly attached disk at runtime, for example:
+      -e "new_disk_size_gib=20". new_disk is detected automatically and must not be configured.
 
-- name: Create filesystem on new disk
+# Проверяем источник данных перед копированием.
+- name: Verify old mount point is a real mount
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - -n
+      - -o
+      - SOURCE
+      - --mountpoint
+      - "{{ old_mount_point }}"
+  register: old_mount_source_cmd
+  changed_when: false
+  failed_when: old_mount_source_cmd.rc != 0 or (old_mount_source_cmd.stdout | trim | length == 0)
+
+- name: Rescan SCSI hosts to detect newly attached disk
+  ansible.builtin.shell: |
+    for host in /sys/class/scsi_host/host*; do
+      echo "- - -" > "$host/scan"
+    done
+  args:
+    executable: /bin/bash
+  changed_when: false
+  become: true
+
+- name: Wait briefly for disk discovery
+  ansible.builtin.pause:
+    seconds: 5
+
+# поиск нового диска
+- name: Detect whole unmounted disks with requested size
+  ansible.builtin.shell: |
+    set -eu
+    expected_bytes=$(( {{ new_disk_size_gib | int }} * 1024 * 1024 * 1024 ))
+
+    lsblk -bdnpo PATH,SIZE,TYPE | while read -r path size type; do
+      [ "$type" = "disk" ] || continue
+      [ "$size" -eq "$expected_bytes" ] || continue
+
+      if lsblk -nrpo MOUNTPOINT "$path" | grep -q '[^[:space:]]'; then
+        continue
+      fi
+
+      echo "$path"
+    done
+  args:
+    executable: /bin/bash
+  register: target_disk_candidates
+  changed_when: false
+
+- name: Require exactly one target disk candidate
+  ansible.builtin.assert:
+    that:
+      - target_disk_candidates.stdout_lines | length == 1
+    fail_msg: >-
+      Expected exactly one whole unmounted disk of {{ new_disk_size_gib }} GiB,
+      but found {{ target_disk_candidates.stdout_lines | length }}:
+      {{ target_disk_candidates.stdout_lines | join(', ') | default('none') }}.
+
+- name: Save detected target disk
+  ansible.builtin.set_fact:
+    new_disk: "{{ target_disk_candidates.stdout_lines[0] }}"
+
+- name: Show detected source and target
+  ansible.builtin.debug:
+    msg:
+      - "Old mount: {{ old_mount_point }} -> {{ old_mount_source_cmd.stdout | trim }}"
+      - "Detected new disk: {{ new_disk }} ({{ new_disk_size_gib }} GiB)"
+
+
+- name: Read existing filesystem type on target disk
+  ansible.builtin.command:
+    argv:
+      - lsblk
+      - -dn
+      - -o
+      - FSTYPE
+      - "{{ new_disk }}"
+  register: target_fstype_cmd
+  changed_when: false
+
+- name: Create filesystem on a blank target disk
   community.general.filesystem:
     dev: "{{ new_disk }}"
     fstype: "{{ filesystem_type }}"
+  when: target_fstype_cmd.stdout | trim | length == 0
+
+- name: Get UUID of target filesystem
+  ansible.builtin.command:
+    argv:
+      - blkid
+      - -s
+      - UUID
+      - -o
+      - value
+      - "{{ new_disk }}"
+  register: new_disk_uuid_cmd
+  changed_when: false
+  failed_when: new_disk_uuid_cmd.rc != 0 or (new_disk_uuid_cmd.stdout | trim | length == 0)
+
+- name: Save target filesystem UUID
+  ansible.builtin.set_fact:
+    new_disk_uuid: "{{ new_disk_uuid_cmd.stdout | trim }}"
 
 - name: Create temporary mount point
   ansible.builtin.file:
@@ -20,9 +117,9 @@
     state: directory
     mode: "0755"
 
-- name: Mount new disk temporarily
+- name: Mount target disk temporarily by UUID
   ansible.posix.mount:
     path: "{{ new_mount_point }}"
-    src: "{{ new_disk }}"
+    src: "UUID={{ new_disk_uuid }}"
     fstype: "{{ filesystem_type }}"
     state: ephemeral

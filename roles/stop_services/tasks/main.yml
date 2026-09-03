@@ -11,7 +11,6 @@
         | selectattr('value.state', 'equalto', 'running')
         | map(attribute='key')
         | reject('in', keep_services)
-        | reject('match', '^systemd-.*\.service$')
         | list
       }}
 

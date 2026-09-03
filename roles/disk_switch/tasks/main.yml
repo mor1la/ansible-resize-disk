@@ -1,23 +1,50 @@
 ---
-- name: Get UUID of new disk
-  ansible.builtin.command: "blkid -s UUID -o value {{ new_disk }}"
-  register: new_disk_uuid
-  changed_when: false
+# К этому моменту предполагается, что:
+# - данные уже скопированы на новый диск
+# - new_disk_uuid содержит UUID нового диска
+# - new_mount_point — временная точка нового диска, например /mnt/new_data
+# - old_mount_point — /data
 
-- name: Unmount temporary new disk
+- name: Backup fstab
+  ansible.builtin.copy:
+    src: /etc/fstab
+    dest: /etc/fstab.bak
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Write new disk UUID to fstab
+  ansible.posix.mount:
+    path: "{{ old_mount_point }}"
+    src: "UUID={{ new_disk_uuid }}"
+    fstype: "{{ filesystem_type }}"
+    opts: "{{ mount_options }}"
+    state: present
+
+- name: Unmount new disk from temporary mount point
   ansible.posix.mount:
     path: "{{ new_mount_point }}"
     state: unmounted
 
-- name: Unmount old disk
+- name: Unmount old data disk
   ansible.posix.mount:
     path: "{{ old_mount_point }}"
     state: unmounted
 
-- name: Mount new disk in place of old disk
+
+# Подключаем новый диск и сохраняем его в fstab для следующих загрузок.
+- name: Mount new disk as data disk
   ansible.posix.mount:
     path: "{{ old_mount_point }}"
-    src: "UUID={{ new_disk_uuid.stdout | trim }}"
+    src: "UUID={{ new_disk_uuid }}"
     fstype: "{{ filesystem_type }}"
-    opts: defaults
+    opts: "{{ mount_options }}"
     state: mounted
+
+
+- name: Show migration result
+  ansible.builtin.debug:
+    msg: >-
+      Migration completed.
+      {{ old_mount_point }} is mounted from UUID={{ new_disk_uuid }}.
